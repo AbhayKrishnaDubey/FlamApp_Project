@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Interactive Bézier Curve</title>
+<style>
+  body {
+    margin: 0;
+    background: #111;
+    overflow: hidden;
+  }
+  canvas {
+    display: block;
+  }
+</style>
+</head>
+<body>
+
+<canvas id="canvas"></canvas>
+
+<script>
+// ======================
+// Canvas Setup
+// ======================
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ======================
+// Vector Utilities
+// ======================
+function vec(x, y) {
+  return { x, y };
+}
+
+function add(a, b) {
+  return vec(a.x + b.x, a.y + b.y);
+}
+
+function sub(a, b) {
+  return vec(a.x - b.x, a.y - b.y);
+}
+
+function mul(v, s) {
+  return vec(v.x * s, v.y * s);
+}
+
+function length(v) {
+  return Math.hypot(v.x, v.y);
+}
+
+function normalize(v) {
+  const len = length(v) || 1;
+  return vec(v.x / len, v.y / len);
+}
+
+// ======================
+// Bézier Math
+// ======================
+function bezierPoint(t, p0, p1, p2, p3) {
+  const u = 1 - t;
+  const tt = t * t;
+  const uu = u * u;
+  const uuu = uu * u;
+  const ttt = tt * t;
+
+  let p = mul(p0, uuu);
+  p = add(p, mul(p1, 3 * uu * t));
+  p = add(p, mul(p2, 3 * u * tt));
+  p = add(p, mul(p3, ttt));
+  return p;
+}
+
+function bezierTangent(t, p0, p1, p2, p3) {
+  const u = 1 - t;
+
+  const term1 = mul(sub(p1, p0), 3 * u * u);
+  const term2 = mul(sub(p2, p1), 6 * u * t);
+  const term3 = mul(sub(p3, p2), 3 * t * t);
+
+  return add(add(term1, term2), term3);
+}
+
+// ======================
+// Spring Physics Point
+// ======================
+class SpringPoint {
+  constructor(pos) {
+    this.position = { ...pos };
+    this.velocity = vec(0, 0);
+    this.target = { ...pos };
+  }
+
+  update(dt) {
+    const k = 25;       // stiffness
+    const damping = 8;  // damping
+
+    const displacement = sub(this.position, this.target);
+    const acceleration = sub(
+      mul(displacement, -k),
+      mul(this.velocity, damping)
+    );
+
+    this.velocity = add(this.velocity, mul(acceleration, dt));
+    this.position = add(this.position, mul(this.velocity, dt));
+  }
+}
+
+// ======================
+// Control Points
+// ======================
+const P0 = vec(100, canvas.height / 2);
+const P3 = vec(canvas.width - 100, canvas.height / 2);
+
+const P1 = new SpringPoint(vec(canvas.width / 3, canvas.height / 2));
+const P2 = new SpringPoint(vec(canvas.width * 2 / 3, canvas.height / 2));
+
+// ======================
+// Mouse Input
+// ======================
+const mouse = vec(canvas.width / 2, canvas.height / 2);
+
+window.addEventListener("mousemove", (e) => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+
+  P1.target = vec(mouse.x - 100, mouse.y);
+  P2.target = vec(mouse.x + 100, mouse.y);
+});
+
+// ======================
+// Rendering Helpers
+// ======================
+function drawCircle(p, r, color) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// ======================
+// Animation Loop
+// ======================
+let lastTime = 0;
+
+function animate(time) {
+  const dt = Math.min((time - lastTime) / 1000, 0.016);
+  lastTime = time;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Update physics
+  P1.update(dt);
+  P2.update(dt);
+
+  // Draw Bézier curve
+  ctx.strokeStyle = "#00ffcc";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+
+  for (let t = 0; t <= 1; t += 0.01) {
+    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
+    if (t === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+
+  // Draw tangents
+  ctx.strokeStyle = "#ffaa00";
+  ctx.lineWidth = 1;
+
+  for (let t = 0; t <= 1; t += 0.1) {
+    const p = bezierPoint(t, P0, P1.position, P2.position, P3);
+    const tan = normalize(
+      bezierTangent(t, P0, P1.position, P2.position, P3)
+    );
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    ctx.lineTo(p.x + tan.x * 30, p.y + tan.y * 30);
+    ctx.stroke();
+  }
+
+  // Draw control points
+  drawCircle(P0, 6, "#ffffff");
+  drawCircle(P1.position, 6, "#ff4444");
+  drawCircle(P2.position, 6, "#ff4444");
+  drawCircle(P3, 6, "#ffffff");
+
+  requestAnimationFrame(animate);
+}
+
+requestAnimationFrame(animate);
+</script>
+
+</body>
+</html>
